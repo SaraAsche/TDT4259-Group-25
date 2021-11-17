@@ -1,0 +1,409 @@
+---
+title: "Data science"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing data
+
+```{r data, include=FALSE}
+#setwd("~/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script")
+library(readxl)
+library(ggplot2)
+library(ggpubr)
+library(tidyverse)
+library(broom)
+library(AICcmodavg)
+library(plotly)
+library(dplyr)
+library(corrplot)
+library(corrr)
+library(writexl)
+library(Hmisc)
+```
+
+### Extracting and reforming data
+
+```{r}
+restrictData = read_excel("onlyNational.xlsx")
+data = read_excel("outputWithoutManufacturers.xlsx")
+
+restrictData$mortality = restrictData$ConfirmedDeaths/restrictData$ConfirmedCases
+
+#Removing NaN values
+restrictData$mortality[is.na(restrictData$mortality)]=0
+data$mortality[is.na(data$mortality)]=0
+
+#Converting to days since 01.01.2020
+restrictData$sencondsSince = as.numeric(as.POSIXct(restrictData$date, format="%Y-%m-%d"))-1577836800
+restrictData$daysSince = restrictData$sencondsSince/86400
+
+data$sencondsSince = as.numeric(as.POSIXct(data$date, format="%Y-%m-%d"))-1577836800
+data$daysSince = data$sencondsSince/86400
+```
+
+
+## Extracting the countries
+```{r}
+
+### Big spike countries ###
+italy = dplyr::filter(data, country == "Italy" & daysSince>100 & daysSince<800)
+france = dplyr::filter(data, country == "France" & daysSince>100 & daysSince<800)
+spain = dplyr::filter(data, country == "Spain" & daysSince>100 & daysSince<800)
+uk = dplyr::filter(data, country == "United Kingdom" & daysSince>100 & daysSince<800)
+
+
+### Nordic countries ###
+norway = dplyr::filter(data, country == "Norway" & daysSince>100 & daysSince<800)
+denmark = dplyr::filter(data, country == "Denmark" & daysSince>100 & daysSince<800)
+finland = dplyr::filter(data, country == "Finland" & daysSince>100 & daysSince<800)
+
+### Central Europe high mortality ###
+belgium = dplyr::filter(data, country == "Belgium" & daysSince>100 & daysSince<800)
+hungary = dplyr::filter(data, country == "Hungary" & daysSince>100 & daysSince<800)
+netherlands = dplyr::filter(data, country == "Netherlands" & daysSince>100 & daysSince<800)
+
+### Central Europe low mortality ###
+austria = dplyr::filter(data, country == "Austria" & daysSince>100 & daysSince<800)
+czechia = dplyr::filter(data, country == "Czech Republic" & daysSince>100 & daysSince<800)
+germany = dplyr::filter(data, country == "Germany" & daysSince>100 & daysSince<800)
+poland = dplyr::filter(data, country == "Poland" & daysSince>100 & daysSince<800)
+
+### SARS countries ###
+hongkong = dplyr::filter(data, country == "Hong Kong" & daysSince>100 & daysSince<800)
+malaysia = dplyr::filter(data, country == "Malaysia" & daysSince>100 & daysSince<800)
+southKorea = dplyr::filter(data, country == "South Korea" & daysSince>100 & daysSince<800)
+thailand = dplyr::filter(data, country == "Thailand" & daysSince>100 & daysSince<800)
+```
+
+
+## Test if mortality is normally distributed
+H0: The data is normally distributed
+
+```{r}
+
+spike_countries = data.frame(countries = rep(c("Spain", "France", "United Kingdom", "Italy"), each = 536), mortality = c(spain$mortality, france$mortality, uk$mortality, italy$mortality))
+
+nordic = data.frame(countries = rep(c("Norway", "Denmark", "Finland"), each = 536), mortality = c(norway$mortality, denmark$mortality, finland$mortality))
+
+EU_high = data.frame(countries = rep(c("Belgium", "Hungary", "Netherlands"), each = 536), mortality = c(belgium$mortality, hungary$mortality, netherlands$mortality))
+
+EU_low = data.frame(countries = rep(c("Austria", "Czechia", "Germany", "Poland"), each = 536), mortality = c(austria$mortality, czechia$mortality, germany$mortality, poland$mortality))
+
+SARS = data.frame(countries = rep(c("Hong Kong", "Malaysia", "South Korea", "Thailand"), each = 536), mortality = c(hongkong$mortality, malaysia$mortality, southKorea$mortality, thailand$mortality))
+
+# Spike
+with(spike_countries, shapiro.test(mortality[countries == "Italy"])) # p-value < 0.05
+with(spike_countries, shapiro.test(mortality[countries == "United Kingdom"])) # p-value < 0.05
+with(spike_countries, shapiro.test(mortality[countries == "Spain"])) # p-value < 0.05
+with(spike_countries, shapiro.test(mortality[countries == "France"])) #p-value <0.05
+
+#Nordic
+with(nordic, shapiro.test(mortality[countries == "Norway"])) # p-value < 0.05
+with(nordic, shapiro.test(mortality[countries == "Denmark"])) # p-value < 0.05
+with(nordic, shapiro.test(mortality[countries == "Finland"])) # p-value < 0.05
+
+#EU high
+with(EU_high, shapiro.test(mortality[countries == "Belgium"])) # p-value < 0.05
+with(EU_high, shapiro.test(mortality[countries == "Hungary"])) # p-value < 0.05
+with(EU_high, shapiro.test(mortality[countries == "Netherlands"])) # p-value < 0.05
+
+#EU low
+with(EU_low, shapiro.test(mortality[countries == "Austria"])) # p-value < 0.05
+with(EU_low, shapiro.test(mortality[countries == "Czechia"])) # p-value < 0.05
+with(EU_low, shapiro.test(mortality[countries == "Germany"])) # p-value < 0.05
+with(EU_low, shapiro.test(mortality[countries == "Poland"])) #p-value <0.05
+
+#SARS
+with(SARS, shapiro.test(mortality[countries == "Hong Kong"])) # p-value < 0.05
+with(SARS, shapiro.test(mortality[countries == "Malaysia"])) # p-value < 0.05
+with(SARS, shapiro.test(mortality[countries == "South Korea"])) # p-value < 0.05
+with(SARS, shapiro.test(mortality[countries == "Thailand"])) #p-value <0.05
+
+```
+As all countries has a p-value < 0.05, we can reject the H0 that the variables are normally distributed. Therefore we cannot say that the data is normally distributed. 
+
+
+## Running pairwise wilcox test on mortality 
+Null hypothesis: is there a difference between the mortality of the spike countries? 
+
+```{r}
+
+spike_wilcox = pairwise.wilcox.test(spike_countries$mortality, spike_countries$countries, p.adjust.method = "bonferroni")$p.value
+spike_wilcox
+
+nordic_willcox = pairwise.wilcox.test(nordic$mortality, nordic$countries, p.adjust.method = "bonferroni")$p.value
+nordic_willcox
+
+EU_high_wilcox = pairwise.wilcox.test(EU_high$mortality, EU_high$countries, p.adjust.method = "bonferroni")$p.value
+EU_high_wilcox
+
+EU_low_wilcox = pairwise.wilcox.test(EU_low$mortality, EU_low$countries, p.adjust.method = "bonferroni")$p.value
+EU_low_wilcox
+
+SARS_wilcox = pairwise.wilcox.test(SARS$mortality, SARS$countries, p.adjust.method = "bonferroni")$p.value
+SARS_wilcox
+```
+
+Spain og france: are similar. The rest are significantly different
+
+## Normality test on mortality
+```{r}
+spike_stringency = data.frame(countries = rep(c("Spain", "France", "United Kingdom", "Italy"), each = 536), stringency = c(spain$StringencyIndex, france$StringencyIndex, uk$StringencyIndex, italy$StringencyIndex))
+
+nordic_stringency = data.frame(countries = rep(c("Norway", "Denmark", "Finland"), each = 536), stringency = c(norway$StringencyIndex, denmark$StringencyIndex, finland$StringencyIndex))
+
+EU_high_stringency = data.frame(countries = rep(c("Belgium", "Hungary", "Netherlands"), each = 536), stringency = c(belgium$StringencyIndex, hungary$StringencyIndex, netherlands$StringencyIndex))
+
+EU_low_stringency= data.frame(countries = rep(c("Austria", "Czechia", "Germany", "Poland"), each = 536), stringency = c(austria$StringencyIndex, czechia$StringencyIndex, germany$StringencyIndex, poland$StringencyIndex))
+
+SARS_stringency = data.frame(countries = rep(c("Hong Kong", "Malaysia", "South Korea", "Thailand"), each = 536), stringency = c(hongkong$StringencyIndex, malaysia$StringencyIndex, southKorea$StringencyIndex, thailand$StringencyIndex))
+
+# Test normality
+
+#Spike
+with(spike_stringency, shapiro.test(stringency[countries == "Italy"])) # p-value < 0.05
+with(spike_stringency, shapiro.test(stringency[countries == "United Kingdom"])) # p-value < 0.05
+with(spike_stringency, shapiro.test(stringency[countries == "Spain"])) # p-value < 0.05
+with(spike_stringency, shapiro.test(stringency[countries == "France"])) #p-value <0.05
+
+#Nordic
+with(nordic_stringency, shapiro.test(stringency[countries == "Norway"])) # p-value < 0.05
+with(nordic_stringency, shapiro.test(stringency[countries == "Denmark"])) # p-value < 0.05
+with(nordic_stringency, shapiro.test(stringency[countries == "Finland"])) # p-value < 0.05
+
+#EU high
+with(EU_high_stringency, shapiro.test(stringency[countries == "Belgium"])) # p-value < 0.05
+with(EU_high_stringency, shapiro.test(stringency[countries == "Hungary"])) # p-value < 0.05
+with(EU_high_stringency, shapiro.test(stringency[countries == "Netherlands"])) # p-value < 0.05
+
+#EU low
+with(EU_low_stringency, shapiro.test(stringency[countries == "Austria"])) # p-value < 0.05
+with(EU_low_stringency, shapiro.test(stringency[countries == "Czechia"])) # p-value < 0.05
+with(EU_low_stringency, shapiro.test(stringency[countries == "Germany"])) # p-value < 0.05
+with(EU_low_stringency, shapiro.test(stringency[countries == "Poland"])) #p-value <0.05
+
+#SARS
+with(SARS_stringency, shapiro.test(stringency[countries == "Hong Kong"])) # p-value < 0.05
+with(SARS_stringency, shapiro.test(stringency[countries == "Malaysia"])) # p-value < 0.05
+with(SARS_stringency, shapiro.test(stringency[countries == "South Korea"])) # p-value < 0.05
+with(SARS_stringency, shapiro.test(stringency[countries == "Thailand"])) #p-value <0.05
+
+```
+None of the countries are normally distributed for mortality. 
+
+## Wilcox test on mortality
+
+```{r}
+spike_string_wilcox = pairwise.wilcox.test(spike_stringency$stringency, spike_stringency$countries, p.adjust.method = "bonferroni")$p.value
+spike_string_wilcox
+
+nordic_string_willcox = pairwise.wilcox.test(nordic_stringency$stringency, nordic_stringency$countries, p.adjust.method = "bonferroni")$p.value
+nordic_string_willcox
+
+EU_high_string_wilcox = pairwise.wilcox.test(EU_high_stringency$stringency, EU_high_stringency$countries, p.adjust.method = "bonferroni")$p.value
+EU_high_string_wilcox
+
+EU_low_string_wilcox = pairwise.wilcox.test(EU_low_stringency$stringency, EU_low_stringency$countries, p.adjust.method = "bonferroni")$p.value
+EU_low_string_wilcox
+
+SARS_string_wilcox = pairwise.wilcox.test(SARS_stringency$stringency, SARS_stringency$countries, p.adjust.method = "bonferroni")$p.value
+SARS_string_wilcox
+
+```
+
+## Boxplots of mortality
+```{r}
+#Spike countries
+boxplot(mortality ~ countries, data = spike_countries, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Mortality")
+
+boxplot(mortality ~ countries, data = SARS, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Mortality")
+
+
+boxplot(mortality ~ countries, data = EU_high, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Mortality")
+
+boxplot(mortality ~ countries, data = EU_low, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Mortality")
+
+boxplot(mortality ~ countries, data = nordic, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Mortality")
+
+```
+
+## Boxplots of stringency
+```{r}
+#Spike countries
+boxplot(stringency ~ countries, data = spike_stringency, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Stringency")
+
+boxplot(stringency ~ countries, data = SARS_stringency, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Stringency")
+
+
+boxplot(stringency ~ countries, data = EU_high_stringency, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Stringency")
+
+boxplot(stringency ~ countries, data = EU_low_stringency, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Stringency")
+
+boxplot(stringency ~ countries, data = nordic_stringency, col = c("slategray3", "darkolivegreen4"), xlab = "Country", ylab = "Stringency")
+
+```
+
+## Spearman correlation on mortality versus stringency for all countries
+```{r}
+
+cor.test(data$mortality, data$stringencyIndex, method = "spearman")
+
+```
+Rho of 0.3397174 means that stringency increases with mortality. Significant as p-value < 0.05. 
+
+## Processing countries: Spain, South Korea, Belgium, Germany and Norway
+Picking the columns in which we would like to investigate the relationship between. 
+```{r}
+
+### Spain ###
+spainSpear = data.frame(spain$numDailyVaccinationsPerMillion, spain$numFullyVaccinatedPerHundred, spain$numTestsPerThousand, spain$mortalityShifted, spain$C1SchoolClosing, spain$C2WorkplaceClosing, spain$C3CancelPublicEvents, spain$C4RestrictionsOnGatherings, spain$C5ClosePublicTransport, spain$C6StayAtHomeRequirements, spain$C7RestrictionsOnInternalMovement, spain$`C8InternationalTravel Controls`, spain$E1IncomeSupport, spain$`E2Debt/contractRelief`, spain$E3FiscalMeasures, spain$E4InternationalSupport, spain$H1PublicInformationCampaigns, spain$H2TestingPolicy, spain$H3ContactTracing, spain$H4EmergencyInvestmentInHealthcare, spain$H6FacialCoverings, spain$H7VaccinationPolicy, spain$H8ProtectionOfElderlyPeople, spain$containmentHealthIndex, spain$economicSupportIndex, spain$governmentResponseIndex, spain$stringencyIndex, spain$`%delta`, spain$`%alpha`)
+
+spainSpear[is.na(spainSpear)]=0
+
+### South Korea ###
+SKSpear = data.frame(spain$numDailyVaccinationsPerMillion, southKorea$numFullyVaccinatedPerHundred, southKorea$numTestsPerThousand, southKorea$mortalityShifted, southKorea$C1SchoolClosing, southKorea$C2WorkplaceClosing, southKorea$C3CancelPublicEvents, southKorea$C4RestrictionsOnGatherings, southKorea$C5ClosePublicTransport, southKorea$C6StayAtHomeRequirements, southKorea$C7RestrictionsOnInternalMovement, southKorea$`C8InternationalTravel Controls`, southKorea$E1IncomeSupport, southKorea$`E2Debt/contractRelief`, southKorea$E3FiscalMeasures, southKorea$E4InternationalSupport, southKorea$H1PublicInformationCampaigns, southKorea$H2TestingPolicy, southKorea$H3ContactTracing, southKorea$H4EmergencyInvestmentInHealthcare, southKorea$H6FacialCoverings, southKorea$H7VaccinationPolicy, southKorea$H8ProtectionOfElderlyPeople, southKorea$containmentHealthIndex, southKorea$economicSupportIndex, southKorea$governmentResponseIndex, southKorea$stringencyIndex, southKorea$`%delta`, southKorea$`%alpha`)
+
+SKSpear[is.na(SKSpear)]=0
+
+### Belgium ###
+belgiumSpear = data.frame(belgium$numDailyVaccinationsPerMillion, belgium$numFullyVaccinatedPerHundred, belgium$numTestsPerThousand, belgium$mortalityShifted, belgium$C1SchoolClosing, belgium$C2WorkplaceClosing, belgium$C3CancelPublicEvents, belgium$C4RestrictionsOnGatherings, belgium$C5ClosePublicTransport, belgium$C6StayAtHomeRequirements, belgium$C7RestrictionsOnInternalMovement, belgium$`C8InternationalTravel Controls`, belgium$E1IncomeSupport, belgium$`E2Debt/contractRelief`, belgium$E3FiscalMeasures, belgium$E4InternationalSupport, belgium$H1PublicInformationCampaigns, belgium$H2TestingPolicy, belgium$H3ContactTracing, belgium$H4EmergencyInvestmentInHealthcare, belgium$H6FacialCoverings, belgium$H7VaccinationPolicy, belgium$H8ProtectionOfElderlyPeople, belgium$containmentHealthIndex, belgium$economicSupportIndex, belgium$governmentResponseIndex, belgium$stringencyIndex, belgium$`%delta`, belgium$`%alpha`)
+
+belgiumSpear[is.na(belgiumSpear)]=0
+
+## Germany ##
+germanySpear = data.frame(germany$numDailyVaccinationsPerMillion, germany$numFullyVaccinatedPerHundred, germany$numTestsPerThousand, germany$mortalityShifted, germany$C1SchoolClosing, germany$C2WorkplaceClosing, germany$C3CancelPublicEvents, germany$C4RestrictionsOnGatherings, germany$C5ClosePublicTransport, germany$C6StayAtHomeRequirements, germany$C7RestrictionsOnInternalMovement, germany$`C8InternationalTravel Controls`, germany$E1IncomeSupport, germany$`E2Debt/contractRelief`, germany$E3FiscalMeasures, germany$E4InternationalSupport, germany$H1PublicInformationCampaigns, germany$H2TestingPolicy, germany$H3ContactTracing, germany$H4EmergencyInvestmentInHealthcare, germany$H6FacialCoverings, germany$H7VaccinationPolicy, germany$H8ProtectionOfElderlyPeople, germany$containmentHealthIndex, germany$economicSupportIndex, germany$governmentResponseIndex, germany$stringencyIndex, germany$`%delta`, germany$`%alpha`)
+
+germanySpear[is.na(germanySpear)]=0
+
+## Norway ##
+norwaySpear = data.frame(norway$numDailyVaccinationsPerMillion, norway$numFullyVaccinatedPerHundred, norway$numTestsPerThousand, norway$mortalityShifted, norway$C1SchoolClosing, norway$C2WorkplaceClosing, norway$C3CancelPublicEvents, norway$C4RestrictionsOnGatherings, norway$C5ClosePublicTransport, norway$C6StayAtHomeRequirements, norway$C7RestrictionsOnInternalMovement, norway$`C8InternationalTravel Controls`, norway$E1IncomeSupport, norway$`E2Debt/contractRelief`, norway$E3FiscalMeasures, norway$E4InternationalSupport, norway$H1PublicInformationCampaigns, norway$H2TestingPolicy, norway$H3ContactTracing, norway$H4EmergencyInvestmentInHealthcare, norway$H6FacialCoverings, norway$H7VaccinationPolicy, norway$H8ProtectionOfElderlyPeople, norway$containmentHealthIndex, norway$economicSupportIndex, norway$governmentResponseIndex, norway$stringencyIndex, norway$`%delta`, norway$`%alpha`)
+
+norwaySpear[is.na(norwaySpear)]=0
+
+
+```
+
+## Spearman correlation matrix for Spain
+```{r}
+corSpain = cor(spainSpear, spainSpear, method = "spearman")
+
+#Extract p-values for the correlations
+pcorSpain = rcorr(as.matrix(spainSpear))$P
+
+pcorSpain = data.frame(pcorSpain)
+
+corSpain = data.frame(corSpain)
+
+write_xlsx(corSpain, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/correlationSpain.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+write_xlsx(pcorSpain, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/p_valcorrelationSpain.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+head(corSpain)
+```
+
+## Spearman correlation on South Korea
+```{r}
+corSK = cor(SKSpear, SKSpear, method = "spearman")
+
+#Extract p-values for the correlations
+pcorSK = rcorr(as.matrix(SKSpear))$P
+
+pcorSK = data.frame(pcorSK)
+
+corSK = data.frame(corSK)
+
+write_xlsx(corSK, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/correlationSK.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+write_xlsx(pcorSK, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/p_valcorrelationSK.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+head(corSK)
+```
+
+## Spearman correlation on Belgium
+```{r}
+corbelgium = cor(belgiumSpear, belgiumSpear, method = "spearman")
+
+#Extract p-values for the correlations
+pcorbelgium = rcorr(as.matrix(belgiumSpear))$P
+
+pcorbelgium = data.frame(pcorbelgium)
+
+corbelgium = data.frame(corbelgium)
+
+write_xlsx(corbelgium, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/correlationbelgium.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+write_xlsx(pcorbelgium, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/p_valcorrelationbelgium.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+head(corbelgium)
+
+```
+
+## Spearman correlation on Germany
+```{r}
+corgermany = cor(germanySpear, germanySpear, method = "spearman")
+
+#Extract p-values for the correlations
+pcorgermany = rcorr(as.matrix(germanySpear))$P
+
+pcorgermany = data.frame(pcorgermany)
+
+corgermany = data.frame(corgermany)
+
+write_xlsx(corgermany, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/correlationgermany.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+write_xlsx(pcorgermany, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/p_valcorrelationgermany.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+head(corgermany)
+
+```
+
+## Spearman correlation on Norway
+```{r}
+cornorway = cor(norwaySpear, norwaySpear, method = "spearman")
+
+#Extract p-values for the correlations
+pcornorway = rcorr(as.matrix(norwaySpear))$P
+
+pcornorway = data.frame(pcornorway)
+
+cornorway = data.frame(cornorway)
+
+write_xlsx(cornorway, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/correlationnorway.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+write_xlsx(pcornorway, "/Users/saraasche/Library/Mobile Documents/com~apple~CloudDocs/Skole fra 2021/2021H/Data science/Project/R script/p_valcorrelationnorway.xlsx", col_names = TRUE,
+  format_headers = TRUE)
+
+head(cornorway)
+
+```
+
+## Adding H5
+```{r}
+cor.test(spain$mortalityShifted, spain$H5InvestmentInVaccines, method = "spearman")
+
+cor.test(belgium$mortalityShifted, belgium$H5InvestmentInVaccines, method = "spearman")
+
+cor.test(southKorea$mortalityShifted, southKorea$H5InvestmentInVaccines, method = "spearman")
+
+cor.test(norway$mortalityShifted, norway$H5InvestmentInVaccines, method = "spearman")
+
+cor.test(germany$mortalityShifted, germany$H5InvestmentInVaccines, method = "spearman")
+
+```
+
